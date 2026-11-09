@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 
 const list = (value) => value.split(',').map((v) => v.trim()).filter(Boolean);
 
@@ -9,6 +10,8 @@ const CAPTURE_METHODS = list(process.env.CAPTURE_METHODS || 'POST').map((m) => m
 const MAX_REQUESTS = parseInt(process.env.MAX_REQUESTS || '500', 10);
 const MAX_BODY = process.env.MAX_BODY || '10mb';
 const RESPONSE_STATUS = parseInt(process.env.RESPONSE_STATUS || '200', 10);
+const INFO_USER = process.env.INFO_USER || 'admin';
+const INFO_PASSWORD = process.env.INFO_PASSWORD || '';
 
 const captureAllMethods = CAPTURE_METHODS.includes('ALL') || CAPTURE_METHODS.includes('*');
 const TEXT_TYPES = /json|text|xml|x-www-form-urlencoded|javascript|graphql/i;
@@ -43,6 +46,27 @@ function decodeBody(buffer, contentType) {
 }
 
 // ---------- Panel /info ----------
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest();
+const safeEqual = (a, b) => crypto.timingSafeEqual(sha256(a), sha256(b));
+
+function basicAuth(req, res, next) {
+  if (!INFO_PASSWORD) return next();
+  const [scheme, encoded] = (req.get('authorization') || '').split(' ');
+  if (scheme === 'Basic' && encoded) {
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+    const sep = decoded.indexOf(':');
+    const user = decoded.slice(0, sep);
+    const pass = decoded.slice(sep + 1);
+    // Evaluar ambos para no filtrar por tiempo cuál de los dos falla
+    const okUser = safeEqual(user, INFO_USER);
+    const okPass = safeEqual(pass, INFO_PASSWORD);
+    if (sep >= 0 && okUser && okPass) return next();
+  }
+  res.set('WWW-Authenticate', 'Basic realm="request-viewer", charset="UTF-8"');
+  res.status(401).send('Autenticación requerida');
+}
+
+app.use('/info', basicAuth);
 app.get('/info', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.get('/info/api/config', (req, res) => {
@@ -117,4 +141,5 @@ app.listen(PORT, () => {
   console.log(`request-viewer escuchando en puerto ${PORT}`);
   console.log(`Capturando ${captureAllMethods ? 'ALL' : CAPTURE_METHODS.join(',')} en: ${CAPTURE_PATHS.join(', ')}`);
   console.log(`Panel: http://localhost:${PORT}/info`);
+  if (!INFO_PASSWORD) console.warn('AVISO: INFO_PASSWORD no definida, el panel /info no tiene contraseña');
 });

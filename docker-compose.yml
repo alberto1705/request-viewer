@@ -3,13 +3,15 @@ services:
     build: .
     container_name: request-viewer
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:${PORT:-8080}"
+    # Valores tomados del fichero .env (ver .env.example)
     environment:
-      PORT: 8080
-      # Rutas a capturar, separadas por comas
-      CAPTURE_PATHS: /test
-      # Métodos a capturar, separados por comas (o ALL)
-      CAPTURE_METHODS: POST
-      MAX_REQUESTS: 500
-      MAX_BODY: 10mb
+      PORT: ${PORT:-8080}
+      CAPTURE_PATHS: ${CAPTURE_PATHS:-/test}
+      CAPTURE_METHODS: ${CAPTURE_METHODS:-POST}
+      MAX_REQUESTS: ${MAX_REQUESTS:-500}
+      MAX_BODY: ${MAX_BODY:-10mb}
+      RESPONSE_STATUS: ${RESPONSE_STATUS:-200}
+      INFO_USER: ${INFO_USER:-admin}
+      INFO_PASSWORD: ${INFO_PASSWORD:-}
     restart: unless-stopped
