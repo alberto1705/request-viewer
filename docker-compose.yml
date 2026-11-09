@@ -1,0 +1,15 @@
+services:
+  request-viewer:
+    build: .
+    container_name: request-viewer
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      # Rutas a capturar, separadas por comas
+      CAPTURE_PATHS: /test
+      # Métodos a capturar, separados por comas (o ALL)
+      CAPTURE_METHODS: POST
+      MAX_REQUESTS: 500
+      MAX_BODY: 10mb
+    restart: unless-stopped

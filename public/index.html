@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Request Viewer</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --muted:#94a3b8; --text:#e2e8f0; --accent:#38bdf8; --border:#334155; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+    header { position:sticky; top:0; background:#020617; border-bottom:1px solid var(--border); padding:12px 20px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; z-index:1; }
+    h1 { font-size:18px; margin:0; }
+    .status { font-size:13px; color:var(--muted); }
+    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:6px; }
+    .dot.on { background:#22c55e; }
+    input { background:var(--card); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; min-width:240px; }
+    button { background:var(--card); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; cursor:pointer; }
+    button:hover { border-color:var(--accent); }
+    main { padding:20px; display:flex; flex-direction:column; gap:12px; }
+    .empty { color:var(--muted); text-align:center; padding:40px; }
+    details { background:var(--card); border:1px solid var(--border); border-radius:8px; }
+    details.new { animation: flash 1.5s ease-out; }
+    @keyframes flash { from { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); } }
+    summary { padding:10px 14px; cursor:pointer; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:14px; }
+    .method { font-weight:700; padding:2px 8px; border-radius:4px; background:#0369a1; font-size:12px; }
+    .id, .time, .src, .size { color:var(--muted); font-size:13px; }
+    .url { font-family: ui-monospace, monospace; }
+    .content { padding:0 14px 14px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .content section { min-width:0; }
+    .content section.full { grid-column:1 / -1; }
+    h3 { font-size:13px; text-transform:uppercase; color:var(--accent); margin:8px 0 6px; }
+    pre { margin:0; background:#020617; border:1px solid var(--border); border-radius:6px; padding:10px; overflow:auto; max-height:400px; font-size:12px; white-space:pre-wrap; word-break:break-all; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    td { border-bottom:1px solid var(--border); padding:4px 6px; vertical-align:top; word-break:break-all; }
+    td:first-child { color:var(--muted); white-space:nowrap; width:1%; }
+    @media (max-width: 800px) { .content { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Request Viewer</h1>
+    <span class="status"><span id="dot" class="dot"></span><span id="conn">Desconectado</span></span>
+    <span class="status" id="config"></span>
+    <span class="status" id="count"></span>
+    <input id="filter" placeholder="Filtrar (IP, body, cabeceras...)" />
+    <button id="clear">Limpiar</button>
+  </header>
+  <main id="list"><div class="empty">Esperando peticiones...</div></main>
+
+  <script>
+    const list = document.getElementById('list');
+    const filterInput = document.getElementById('filter');
+    let requests = [];
+
+    function el(tag, props = {}, children = []) {
+      const node = document.createElement(tag);
+      Object.assign(node, props);
+      for (const c of children) node.append(c);
+      return node;
+    }
+
+    function kvTable(obj) {
+      const table = el('table');
+      for (const [k, v] of Object.entries(obj || {})) {
+        if (v === null || v === undefined || v === '') continue;
+        table.append(el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: typeof v === 'object' ? JSON.stringify(v) : String(v) })]));
+      }
+      return table;
+    }
+
+    function bodyText(body) {
+      if (!body || body.size === 0) return '(vacío)';
+      if (body.parsed !== null) return JSON.stringify(body.parsed, null, 2);
+      if (body.encoding === 'base64') return '[binario, base64]\n' + body.raw;
+      return body.raw;
+    }
+
+    function render(entry, isNew) {
+      const src = entry.source.forwardedFor ? `${entry.source.forwardedFor} (via ${entry.source.ip})` : `${entry.source.ip}:${entry.source.port}`;
+      const summary = el('summary', {}, [
+        el('span', { className: 'id', textContent: '#' + entry.id }),
+        el('span', { className: 'method', textContent: entry.method }),
+        el('span', { className: 'url', textContent: entry.url }),
+        el('span', { className: 'src', textContent: 'desde ' + src }),
+        el('span', { className: 'size', textContent: entry.body.size + ' bytes' }),
+        el('span', { className: 'time', textContent: new Date(entry.timestamp).toLocaleString() }),
+      ]);
+      const content = el('div', { className: 'content' }, [
+        el('section', { className: 'full' }, [el('h3', { textContent: 'Body' + (entry.contentType ? ' — ' + entry.contentType : '') }), el('pre', { textContent: bodyText(entry.body) })]),
+        el('section', {}, [el('h3', { textContent: 'Origen' }), kvTable(entry.source)]),
+        el('section', {}, [el('h3', { textContent: 'Query' }), kvTable(entry.query)]),
+        el('section', { className: 'full' }, [el('h3', { textContent: 'Cabeceras' }), kvTable(entry.headers)]),
+      ]);
+      const details = el('details', { className: isNew ? 'new' : '' }, [summary, content]);
+      details.dataset.search = JSON.stringify(entry).toLowerCase();
+      return details;
+    }
+
+    function matches(node) {
+      const q = filterInput.value.trim().toLowerCase();
+      return !q || node.dataset.search.includes(q);
+    }
+
+    function renderAll() {
+      list.replaceChildren();
+      for (const r of requests) {
+        const node = render(r, false);
+        node.hidden = !matches(node);
+        list.append(node);
+      }
+      if (!requests.length) list.append(el('div', { className: 'empty', textContent: 'Esperando peticiones...' }));
+      updateCount();
+    }
+
+    function updateCount() {
+      document.getElementById('count').textContent = requests.length + ' peticiones';
+    }
+
+    function addRequest(entry) {
+      if (!requests.length) list.replaceChildren();
+      requests.unshift(entry);
+      const node = render(entry, true);
+      node.hidden = !matches(node);
+      list.prepend(node);
+      updateCount();
+    }
+
+    filterInput.addEventListener('input', () => {
+      for (const node of list.querySelectorAll('details')) node.hidden = !matches(node);
+    });
+
+    document.getElementById('clear').addEventListener('click', () => fetch('/info/api/requests', { method: 'DELETE' }));
+
+    async function init() {
+      const cfg = await (await fetch('/info/api/config')).json();
+      document.getElementById('config').textContent = `Capturando ${cfg.methods.join(',')} en ${cfg.paths.join(', ')}`;
+      requests = await (await fetch('/info/api/requests')).json();
+      renderAll();
+
+      const es = new EventSource('/info/api/stream');
+      const setConn = (on) => {
+        document.getElementById('dot').className = 'dot' + (on ? ' on' : '');
+        document.getElementById('conn').textContent = on ? 'En vivo' : 'Reconectando...';
+      };
+      es.onopen = () => setConn(true);
+      es.onerror = () => setConn(false);
+      es.addEventListener('request', (e) => addRequest(JSON.parse(e.data)));
+      es.addEventListener('cleared', () => { requests = []; renderAll(); });
+    }
+
+    init();
+  </script>
+</body>
+</html>

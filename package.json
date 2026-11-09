@@ -1,0 +1,12 @@
+{
+  "name": "request-viewer",
+  "version": "1.0.0",
+  "description": "Captura las peticiones que llegan a un endpoint y las muestra en /info",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
