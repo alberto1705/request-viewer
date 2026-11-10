@@ -87,6 +87,7 @@
       ]);
       const content = el('div', { className: 'content' }, [
         el('section', { className: 'full' }, [el('h3', { textContent: 'Body' + (entry.contentType ? ' — ' + entry.contentType : '') }), el('pre', { textContent: bodyText(entry.body) })]),
+        el('section', { className: 'full' }, [el('h3', { textContent: 'Body raw' + (entry.body.encoding === 'base64' ? ' (base64)' : '') }), el('pre', { textContent: entry.body.size ? entry.body.raw : '(vacío)' })]),
         el('section', {}, [el('h3', { textContent: 'Origen' }), kvTable(entry.source)]),
         el('section', {}, [el('h3', { textContent: 'Query' }), kvTable(entry.query)]),
         el('section', { className: 'full' }, [el('h3', { textContent: 'Cabeceras' }), kvTable(entry.headers)]),
